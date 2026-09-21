@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SXB Ultra</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        body { margin: 0; background-color: #0f0f13; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; overflow: hidden; }
+        video { width: 100%; max-width: 100%; max-height: 80vh; background: #000; outline: none; }
+        h3 { color: #00ff88; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <h3 id="channel-name">جاري تحميل البث...</h3>
+    <video id="video" controls autoplay playsinline></video>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const streamUrl = urlParams.get('url') || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8'; 
+        const channelName = urlParams.get('ch') || 'SXB Ultra';
+
+        document.getElementById('channel-name').innerText = "بث: " + channelName;
+        const video = document.getElementById('video');
+
+        if (Hls.isSupported()) {
+            const hls = new Hls();
+            hls.loadSource(streamUrl);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                video.play();
+            });
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = streamUrl;
+            video.addEventListener('loadedmetadata', function() {
+                video.play();
+            });
+        }
+    </script>
+</body>
+</html>
