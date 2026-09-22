@@ -4,36 +4,218 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SXB Ultra Player</title>
-    <!-- استدعاء أحدث إصدار من مكتبة HLS -->
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <!-- أحدث إصدار وأكثرهم استقراراً من مكتبة HLS -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.0/dist/hls.min.js"></script>
     <style>
-        * { box-sizing: border-box; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { 
-            margin: 0; background-color: #0b0e14; color: white; 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            overflow: hidden; height: 100vh; display: flex; 
-            align-items: center; justify-content: center; 
+            margin: 0; padding: 0; background-color: #0b0e14; color: white; 
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
+            overflow: hidden; height: 100vh; width: 100vw; 
+            display: flex; align-items: center; justify-content: center; 
         }
+        
         video { 
             width: 100%; height: 100%; outline: none; 
             background: #000; object-fit: contain; 
         }
+        
+        /* تصميم الواجهة السينمائية */
         #overlay { 
-            position: absolute; inset: 0; 
-            background: linear-gradient(135deg, #0b0e14 0%, #1a1f2e 100%); 
-            display: flex; flex-direction: column; align-items: center; 
-            justify-content: center; z-index: 10; transition: opacity 0.5s ease;
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
+            background: radial-gradient(circle at center, #1a1f2e 0%, #0b0e14 100%); 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            z-index: 9999; transition: opacity 0.4s ease-out, visibility 0.4s;
         }
-        .logo { font-size: 32px; font-weight: 900; letter-spacing: 2px; margin-bottom: 30px; text-shadow: 0 0 15px rgba(83, 252, 24, 0.5); }
-        .logo span { color: #53fc18; }
+        
+        .brand { 
+            font-size: 38px; font-weight: 900; letter-spacing: 3px; 
+            margin-bottom: 40px; text-shadow: 0 0 20px rgba(83, 252, 24, 0.4); 
+            display: flex; align-items: center; gap: 8px;
+        }
+        .brand span.sxb { color: #ffffff; }
+        .brand span.ultra { color: #53fc18; font-style: italic; }
         
         .play-btn { 
-            background: #53fc18; color: #000; padding: 18px 40px; 
-            font-size: 18px; font-weight: bold; border-radius: 50px; 
-            border: none; cursor: pointer; box-shadow: 0 0 25px rgba(83, 252, 24, 0.4); 
-            transition: all 0.3s ease; display: flex; align-items: center; gap: 10px;
+            background: linear-gradient(135deg, #53fc18 0%, #32b507 100%);
+            color: #000; padding: 18px 45px; font-size: 19px; font-weight: 800; 
+            border-radius: 50px; border: none; cursor: pointer; 
+            box-shadow: 0 10px 25px rgba(83, 252, 24, 0.3); 
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            display: flex; align-items: center; gap: 12px;
         }
-        .play-btn:active { transform: scale(0.95); }
+        .play-btn:active { transform: scale(0.92); box-shadow: 0 5px 15px rgba(83, 252, 24, 0.2); }
+        .play-btn svg { width: 22px; height: 22px; fill: #000; }
+        
+        #status-container { margin-top: 30px; text-align: center; height: 60px; }
+        #status-text { font-size: 16px; color: #a0a5b5; font-weight: 600; margin-top: 15px; }
+        
+        /* أنيميشن التحميل الاحترافي */
+        .loader { 
+            display: none; width: 45px; height: 45px; margin: 0 auto;
+            border: 4px solid rgba(83, 252, 24, 0.1); 
+            border-radius: 50%; border-left-color: #53fc18; 
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* إخفاء العناصر عند الحاجة */
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <!-- الواجهة الأمامية (Overlay) -->
+    <div id="overlay">
+        <div class="brand">
+            <span class="sxb">SXB</span><span class="ultra">ULTRA</span>
+        </div>
+        
+        <button class="play-btn" id="playBtn">
+            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            انقر للتشغيل
+        </button>
+        
+        <div id="status-container">
+            <div class="loader" id="loader"></div>
+            <div id="status-text"></div>
+        </div>
+    </div>
+
+    <!-- مشغل الفيديو (playsinline ضروري جداً لتليجرام والآيفون) -->
+    <video id="video" playsinline webkit-playsinline controls></video>
+
+    <script>
+        // 1. جلب المتغيرات من الرابط
+        const urlParams = new URLSearchParams(window.location.search);
+        const ch = urlParams.get('ch') || 'sxb';
+        const type = urlParams.get('type') || 'live';
+        
+        // 2. تعريف العناصر
+        const video = document.getElementById('video');
+        const overlay = document.getElementById('overlay');
+        const playBtn = document.getElementById('playBtn');
+        const statusText = document.getElementById('status-text');
+        const loader = document.getElementById('loader');
+
+        // 3. دالة تحديث حالة الواجهة
+        const updateUI = (message, isError = false, showLoader = true) => {
+            statusText.innerText = message;
+            statusText.style.color = isError ? '#ff4b4b' : '#a0a5b5';
+            if (isError) {
+                loader.style.display = 'none';
+                playBtn.classList.remove('hidden');
+                playBtn.innerHTML = 'إعادة المحاولة 🔄';
+            } else {
+                loader.style.display = showLoader ? 'block' : 'none';
+            }
+        };
+
+        // 4. الحدث الرئيسي عند الضغط على زر التشغيل
+        playBtn.addEventListener('click', async () => {
+            playBtn.classList.add('hidden');
+            updateUI("جاري الاتصال بالسيرفر...");
+            
+            let streamUrl = "";
+            
+            try {
+                // جلب البيانات من Kick عبر AllOrigins لتخطي الحماية
+                const apiUrl = type === 'live' 
+                    ? `https://kick.com/api/v2/channels/${ch}` 
+                    : `https://kick.com/api/v2/channels/${ch}/videos`;
+                
+                const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`);
+                if (!res.ok) throw new Error("فشل الاتصال بالخادم الوسيط");
+                
+                const data = await res.json();
+                if (!data.contents) throw new Error("استجابة السيرفر فارغة");
+                
+                const kickData = JSON.parse(data.contents);
+                
+                // تحديد الرابط بناءً على نوع الطلب
+                if (type === 'live') {
+                    if (kickData.livestream && kickData.livestream.is_live) {
+                        streamUrl = kickData.playback_url;
+                        updateUI("تم التقاط البث! جاري التهيئة...");
+                    } else {
+                        throw new Error("القناة غير متصلة الآن (Offline) 😴");
+                    }
+                } else {
+                    if (type === 'vod1' && kickData.length > 0) streamUrl = kickData[0].source;
+                    else if (type === 'vod2' && kickData.length > 1) streamUrl = kickData[1].source;
+                    else throw new Error("لا يوجد بث مسجل متاح حالياً 📭");
+                    
+                    updateUI("تم جلب التسجيل! جاري التهيئة...");
+                }
+
+                // 5. دالة تشغيل الفيديو وإخفاء الواجهة
+                const startPlayback = () => {
+                    overlay.style.opacity = '0';
+                    setTimeout(() => {
+                        overlay.style.visibility = 'hidden';
+                    }, 400); // الانتظار حتى ينتهي تأثير الاختفاء
+                    video.play().catch(e => {
+                        console.error("Autoplay prevented:", e);
+                    });
+                };
+
+                // 6. تهيئة مشغل Hls.js بإعدادات الأداء العالي
+                if (Hls.isSupported()) {
+                    const hls = new Hls({
+                        maxBufferLength: 60,
+                        maxMaxBufferLength: 120,
+                        liveSyncDuration: 3,
+                        enableWorker: true,
+                        lowLatencyMode: true
+                    });
+                    
+                    hls.loadSource(streamUrl);
+                    hls.attachMedia(video);
+                    
+                    hls.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
+                        // الحل الجذري لمشكلة التعليق: استخدام nextLevel بدلاً من currentLevel
+                        // هذا يسمح للمشغل بالبدء الفوري ثم الانتقال السلس لأعلى جودة 1080p
+                        const highestQualityIndex = data.levels.length - 1;
+                        if (highestQualityIndex >= 0) {
+                            hls.nextLevel = highestQualityIndex;
+                        }
+                        startPlayback();
+                    });
+                    
+                    hls.on(Hls.Events.ERROR, function (event, data) {
+                        if (data.fatal) {
+                            switch (data.type) {
+                                case Hls.ErrorTypes.NETWORK_ERROR:
+                                    hls.startLoad(); // محاولة الإصلاح التلقائي
+                                    break;
+                                case Hls.ErrorTypes.MEDIA_ERROR:
+                                    hls.recoverMediaError(); // محاولة الإصلاح التلقائي
+                                    break;
+                                default:
+                                    hls.destroy();
+                                    updateUI("حدث خطأ قاتل في المشغل ⚠️", true);
+                                    break;
+                            }
+                        }
+                    });
+
+                // 7. دعم أجهزة الآيفون (iOS) التي تعتمد على المشغل الأصلي
+                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                    video.src = streamUrl;
+                    video.addEventListener('loadedmetadata', startPlayback);
+                    video.addEventListener('error', () => {
+                        updateUI("تعذر تشغيل الصيغة على هذا الجهاز ⚠️", true);
+                    });
+                }
+                
+            } catch (error) {
+                // التقاط أي أخطاء وعرضها للمستخدم بشكل أنيق
+                updateUI(error.message || "حدث خطأ غير معروف", true);
+            }
+        });
+    </script>
+</body>
+</html>
         .play-btn:hover { box-shadow: 0 0 40px rgba(83, 252, 24, 0.7); }
         
         #status { margin-top: 25px; font-size: 16px; color: #a0a5b5; font-weight: 600; text-align: center; }
