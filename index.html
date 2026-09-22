@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DO<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -34,7 +34,7 @@
         #center-loader { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; pointer-events: none; width: 100%; text-align: center; }
         .spinner { width: 45px; height: 45px; border: 4px solid rgba(83,252,24,0.2); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; display: none; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
-        #status-msg { margin-top: 15px; font-size: 14px; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+        #status-msg { margin-top: 15px; font-size: 14px; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.8); line-height: 1.5; padding: 0 10px; }
 
         .bottom-bar { padding: 15px; display: flex; flex-direction: column; gap: 15px; background: rgba(0,0,0,0.5); }
         .controls-row { display: flex; align-items: center; justify-content: space-between; position: relative; }
@@ -112,6 +112,48 @@
         video.addEventListener('play', resetTimer);
         video.addEventListener('pause', () => { overlay.classList.remove('ui-hidden'); clearTimeout(hideTimer); });
 
+        // محرك البحث المتعدد المسارات (لتفادي الحظر تماماً)
+        async function fetchWithBypass(url) {
+            const proxies = [
+                // المسار الأول: AllOrigins Get (يمنع خطأ Failed to fetch بتمرير البيانات داخل JSON)
+                `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+                // المسار الثاني: CodeTabs (سيرفر قوي كبديل)
+                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+                // المسار الثالث: AllOrigins Hexlet (بديل سريع)
+                `https://api.allorigins.hexlet.app/get?url=${encodeURIComponent(url)}`
+            ];
+
+            let lastErrorMsg = "جميع خوادم التخطي محظورة";
+
+            for (let proxy of proxies) {
+                try {
+                    statusMsg.innerText = `جاري محاولة اختراق الحماية (${proxies.indexOf(proxy) + 1})...`;
+                    const res = await fetch(proxy, { cache: 'no-store' });
+                    
+                    if (!res.ok) continue;
+
+                    let data;
+                    // إذا كان المسار هو AllOrigins، يجب استخراج البيانات من حقل contents
+                    if (proxy.includes('allorigins')) {
+                        const jsonRes = await res.json();
+                        if (jsonRes.contents) {
+                            data = JSON.parse(jsonRes.contents);
+                        } else {
+                            continue;
+                        }
+                    } else {
+                        data = await res.json();
+                    }
+
+                    if (data) return data;
+                } catch (err) {
+                    lastErrorMsg = err.message;
+                    continue; // إذا فشل السيرفر، انتقل للذي بعده مباشرة
+                }
+            }
+            throw new Error("فشل تجاوز نظام Cloudflare. جرب مجدداً لاحقاً.");
+        }
+
         async function fetchStream(channel, mode, btn) {
             currentMode = mode;
             document.querySelectorAll('.top-bar .nav-btn').forEach(b => b.classList.remove('active'));
@@ -121,7 +163,7 @@
             video.pause(); video.removeAttribute('src'); video.load();
             
             spinner.style.display = 'block';
-            statusMsg.innerText = mode === 'live' ? 'جاري سحب البث المباشر...' : 'جاري سحب الفيديو المسجل...';
+            statusMsg.innerText = 'تهيئة سحب الفيديو...';
             overlay.classList.remove('ui-hidden');
 
             try {
@@ -129,23 +171,19 @@
                     ? `https://kick.com/api/v2/channels/${channel}` 
                     : `https://kick.com/api/v2/channels/${channel}/videos`;
                 
-                // استخدام raw proxy لجلب البيانات نقية
-                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(endpoint)}`;
-                const res = await fetch(proxyUrl, { cache: 'no-store' });
-                
-                if (!res.ok) throw new Error("تعذر الاتصال بخوادم Kick");
-                const data = await res.json();
+                // استخدام دالة الجلب الذكية الجديدة
+                const data = await fetchWithBypass(endpoint);
                 let streamUrl = "";
 
                 if (mode === 'live') {
                     if (data.livestream && data.livestream.is_live) streamUrl = data.playback_url;
-                    else throw new Error("القناة أوفلاين حالياً 😴");
+                    else throw new Error("القناة غير متصلة حالياً 😴 (Offline)");
                 } else {
                     if (data.length > 0 && data[0].source) streamUrl = data[0].source;
                     else throw new Error("لا توجد فيديوهات مسجلة لهذه القناة");
                 }
 
-                statusMsg.innerText = 'تم التقاط الفيديو! جاري التشغيل...';
+                statusMsg.innerText = 'تم التقاط البث بنجاح! جاري التشغيل...';
 
                 if (Hls.isSupported()) {
                     hls = new Hls({ maxBufferLength: 30 });
@@ -156,7 +194,7 @@
                         playVideo();
                     });
                     hls.on(Hls.Events.ERROR, (e, d) => {
-                        if(d.fatal) { spinner.style.display = 'none'; statusMsg.innerText = 'فشل تشغيل الفيديو. جرب سيرفر آخر.'; }
+                        if(d.fatal) { spinner.style.display = 'none'; statusMsg.innerText = 'انقطع الاتصال بالسيرفر. اضغط زر التحديث.'; }
                     });
                 } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                     video.src = streamUrl;
@@ -174,7 +212,7 @@
             statusMsg.innerText = '';
             video.play().catch(() => {
                 video.muted = true;
-                video.play().catch(() => statusMsg.innerText = 'اضغط زر (▶) في الأسفل للتشغيل');
+                video.play().catch(() => statusMsg.innerText = 'تم حظر التشغيل التلقائي، اضغط (▶) للبدء');
             });
         }
 
@@ -216,3 +254,4 @@
     </script>
 </body>
 </html>
+
