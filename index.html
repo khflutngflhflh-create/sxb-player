@@ -30,7 +30,7 @@
         
         .nav-btn {
             background: var(--btn-bg); color: #fff; border: 1px solid rgba(255,255,255,0.1); 
-            padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; transition: 0.2s;
+            padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.2s;
         }
         
         .nav-btn.active { background: rgba(83, 252, 24, 0.2); border-color: var(--primary); color: var(--primary); }
@@ -39,18 +39,19 @@
 
         /* حاوية المشغل */
         #player-container { flex: 1; width: 100%; position: relative; background: #000; }
-        
         iframe { width: 100%; height: 100%; border: none; background: #000; }
         
-        /* شاشة التحميل الوهمية */
+        /* شاشة التحميل الذكية */
         #loader {
-            position: absolute; inset: 0; background: #000; display: flex; flex-direction: column; 
-            align-items: center; justify-content: center; z-index: 10; transition: opacity 0.5s ease;
+            position: absolute; inset: 0; background: radial-gradient(circle, #1a2130 0%, #0b0e14 100%); 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            z-index: 10; transition: opacity 0.5s ease;
         }
         
-        .spinner { width: 40px; height: 40px; border: 4px solid rgba(83, 252, 24, 0.2); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        .spinner { width: 45px; height: 45px; border: 4px solid rgba(83, 252, 24, 0.2); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
-        #loader-text { margin-top: 15px; font-size: 14px; font-weight: bold; color: #aaa; }
+        
+        #loader-text { margin-top: 15px; font-size: 14px; font-weight: bold; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
         
         .hidden { opacity: 0; pointer-events: none; }
     </style>
@@ -59,58 +60,95 @@
 
     <div class="top-bar">
         <button class="nav-btn refresh-btn" onclick="forceRefresh()">تحديث 🔄</button>
-        <button class="nav-btn" onclick="loadStream('abuswe7l', this)">أبو صويلح 🔴</button>
-        <button class="nav-btn active" onclick="loadStream('sxb', this)">SXB 🔴</button>
+        <button class="nav-btn" onclick="loadStream('abuswe7l', this)">أبو صويلح 🎮</button>
+        <button class="nav-btn active" onclick="loadStream('sxb', this)">S X B 🚀</button>
         <div class="logo">SXB <span>ULTRA MAX</span></div>
     </div>
 
     <div id="player-container">
         <div id="loader">
             <div class="spinner"></div>
-            <div id="loader-text">جاري الاتصال بخوادم Kick...</div>
+            <div id="loader-text">جاري فحص حالة القناة...</div>
         </div>
         <iframe id="kick-frame" src="" allowfullscreen allow="autoplay; fullscreen"></iframe>
     </div>
 
     <script>
-        // إعدادات تليجرام
+        // إعدادات تليجرام لمنع إغلاق التطبيق بالغلط
         try { if (window.Telegram && window.Telegram.WebApp) { Telegram.WebApp.expand(); Telegram.WebApp.disableVerticalSwipes(); } } catch (e) {}
 
         const iframe = document.getElementById('kick-frame');
         const loader = document.getElementById('loader');
         const loaderText = document.getElementById('loader-text');
+        
+        let currentChannel = 'sxb';
 
-        // دالة تغيير القناة
-        function loadStream(channel, btn) {
+        async function loadStream(channel, btn) {
+            currentChannel = channel;
+            
             // تحديث الأزرار
             document.querySelectorAll('.top-bar .nav-btn:not(.refresh-btn)').forEach(b => b.classList.remove('active'));
             if(btn) btn.classList.add('active');
 
             // إظهار شاشة التحميل
             loader.classList.remove('hidden');
-            loaderText.innerText = `جاري تجهيز بث ${channel}...`;
-
-            // استخدام الرابط المخصص للتضمين الرسمي (Embed)
-            const embedUrl = `https://player.kick.com/${channel}?autoplay=true`;
+            loaderText.innerText = `جاري البحث عن بث لـ ${channel}...`;
             
-            iframe.src = embedUrl;
+            // إفراغ المشغل القديم لمنع تداخل الصوت
+            iframe.src = 'about:blank';
 
-            // إخفاء شاشة التحميل بعد 3 ثواني (الوقت التقريبي لفتح المشغل الرسمي)
-            setTimeout(() => {
-                loader.classList.add('hidden');
-            }, 3000);
+            try {
+                // استخدام بروكسي آمن (Hexlet) لفحص حالة القناة هل هي (مباشر) أم (أوفلاين)
+                const apiUrl = `https://kick.com/api/v1/channels/${channel}`;
+                const proxyUrl = `https://api.allorigins.hexlet.app/raw?url=${encodeURIComponent(apiUrl)}`;
+                
+                const response = await fetch(proxyUrl, { cache: 'no-store', timeout: 8000 });
+                
+                if (!response.ok) throw new Error("تعذر جلب البيانات");
+                
+                const data = await response.json();
+                
+                // 1. هل القناة تبث مباشر الآن؟
+                if (data.livestream && data.livestream.is_live) {
+                    loaderText.innerText = 'القناة تبث الآن! جاري التشغيل...';
+                    iframe.src = `https://player.kick.com/${channel}?autoplay=true`;
+                } 
+                // 2. القناة أوفلاين، هل يوجد لها فيديوهات مسجلة سابقة (VOD)؟
+                else if (data.previous_livestreams && data.previous_livestreams.length > 0) {
+                    loaderText.innerText = 'القناة أوفلاين. جاري تشغيل آخر بث مسجل...';
+                    // استخراج معرّف أحدث فيديو مسجل (الفيديو الأول في القائمة)
+                    const latestVideoId = data.previous_livestreams[0].video.uuid;
+                    iframe.src = `https://player.kick.com/${channel}/video/${latestVideoId}?autoplay=true`;
+                } 
+                // 3. القناة أوفلاين ولا يوجد لها أي تسجيلات
+                else {
+                    loaderText.innerText = 'القناة أوفلاين ولا يوجد بث مسجل.';
+                    iframe.src = `https://player.kick.com/${channel}?autoplay=true`; // عرض الواجهة الافتراضية الأوفلاين
+                }
+
+            } catch (error) {
+                console.log(error);
+                // إذا فشل الفحص لأي سبب، نعرض المشغل المباشر كحل بديل
+                loaderText.innerText = 'يتم فتح المشغل المباشر...';
+                iframe.src = `https://player.kick.com/${channel}?autoplay=true`;
+            }
+
+            // إخفاء شاشة التحميل بمجرد تحميل إطار Kick الرسمي
+            iframe.onload = () => {
+                setTimeout(() => { loader.classList.add('hidden'); }, 500);
+            };
+            
+            // كخطة بديلة إذا تأخر التحميل جداً
+            setTimeout(() => { loader.classList.add('hidden'); }, 4000);
         }
 
         // دالة التحديث
         function forceRefresh() {
             const activeBtn = document.querySelector('.nav-btn.active');
-            if(activeBtn) {
-                const channel = activeBtn.innerText.includes('SXB') ? 'sxb' : 'abuswe7l';
-                loadStream(channel, activeBtn);
-            }
+            if(activeBtn) loadStream(currentChannel, activeBtn);
         }
 
-        // تشغيل قناة SXB تلقائياً عند الدخول
+        // تشغيل قناة SXB تلقائياً عند الدخول الأول
         window.onload = () => {
             const defaultBtn = document.querySelector('.nav-btn.active');
             loadStream('sxb', defaultBtn);
