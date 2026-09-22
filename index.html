@@ -2,38 +2,372 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>SXB Ultra Player</title>
-    <!-- أحدث إصدار وأكثرهم استقراراً من مكتبة HLS -->
+
+    <!-- مكتبة تليجرام الرسمية للتطبيقات المصغرة ومكتبة HLS -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.0/dist/hls.min.js"></script>
+
     <style>
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { 
-            margin: 0; padding: 0; background-color: #0b0e14; color: white; 
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
-            overflow: hidden; height: 100vh; width: 100vw; 
-            display: flex; align-items: center; justify-content: center; 
+        :root {
+            --bg-color: #0b0e14;
+            --surface-color: #161b26;
+            --primary-color: #53fc18;
+            --primary-glow: rgba(83, 252, 24, 0.35);
+            --text-main: #ffffff;
+            --text-dim: #9aa0a6;
+            --danger-color: #ff4757;
         }
-        
-        video { 
-            width: 100%; height: 100%; outline: none; 
-            background: #000; object-fit: contain; 
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
-        
-        /* تصميم الواجهة السينمائية */
-        #overlay { 
-            position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
-            background: radial-gradient(circle at center, #1a1f2e 0%, #0b0e14 100%); 
-            display: flex; flex-direction: column; align-items: center; justify-content: center; 
-            z-index: 9999; transition: opacity 0.4s ease-out, visibility 0.4s;
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
-        
-        .brand { 
-            font-size: 38px; font-weight: 900; letter-spacing: 3px; 
-            margin-bottom: 40px; text-shadow: 0 0 20px rgba(83, 252, 24, 0.4); 
-            display: flex; align-items: center; gap: 8px;
+
+        /* شريط العنوان العلوي */
+        .app-header {
+            padding: 14px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(11, 14, 20, 0.95);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            z-index: 20;
         }
-        .brand span.sxb { color: #ffffff; }
+
+        .brand-logo {
+            font-size: 20px;
+            font-weight: 900;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .brand-logo span {
+            color: var(--primary-color);
+            text-shadow: 0 0 10px var(--primary-glow);
+        }
+
+        .live-badge {
+            background: rgba(255, 71, 87, 0.15);
+            color: var(--danger-color);
+            border: 1px solid var(--danger-color);
+            padding: 3px 8px;
+            font-size: 11px;
+            font-weight: 700;
+            border-radius: 6px;
+            text-transform: uppercase;
+        }
+
+        /* مساحة عرض المشغل */
+        .player-viewport {
+            position: relative;
+            flex: 1;
+            width: 100%;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #000;
+            outline: none;
+        }
+
+        /* واجهة البدء وفك كتم الصوت التلقائي */
+        #playback-overlay {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at center, #1b2230 0%, #0b0e14 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            padding: 24px;
+            text-align: center;
+            transition: opacity 0.3s ease;
+        }
+
+        .start-btn {
+            background: linear-gradient(135deg, #53fc18 0%, #30bd05 100%);
+            color: #000;
+            border: none;
+            padding: 16px 36px;
+            border-radius: 50px;
+            font-size: 18px;
+            font-weight: 800;
+            cursor: pointer;
+            box-shadow: 0 8px 24px var(--primary-glow);
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .start-btn:active {
+            transform: scale(0.95);
+        }
+
+        .status-msg {
+            margin-top: 18px;
+            font-size: 14px;
+            color: var(--text-dim);
+            font-weight: 600;
+            min-height: 20px;
+        }
+
+        /* أيقونة التحميل */
+        .loader {
+            display: none;
+            width: 44px;
+            height: 44px;
+            border: 4px solid rgba(83, 252, 24, 0.2);
+            border-top-color: var(--primary-color);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* لوحة التحكم والتبديل السفلية */
+        .control-panel {
+            background: var(--surface-color);
+            padding: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 20;
+        }
+
+        .section-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+
+        .pill-group {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 2px;
+        }
+
+        .pill-btn {
+            flex: 1;
+            padding: 10px 14px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            text-align: center;
+            white-space: nowrap;
+            transition: all 0.2s ease;
+        }
+
+        .pill-btn.active {
+            background: rgba(83, 252, 24, 0.15);
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+    </style>
+</head>
+<body>
+
+    <header class="app-header">
+        <div class="brand-logo">SXB <span>ULTRA</span></div>
+        <div id="status-badge" class="live-badge">مباشر 1080p</div>
+    </header>
+
+    <main class="player-viewport">
+        <div id="playback-overlay">
+            <div id="loader" class="loader"></div>
+            <button id="start-btn" class="start-btn">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                تشغيل البث بأعلى جودة
+            </button>
+            <div id="status-msg" class="status-msg">اختر القناة ونوع البث من الأسفل للبدء</div>
+        </div>
+
+        <video id="player" playsinline webkit-playsinline controls></video>
+    </main>
+
+    <nav class="control-panel">
+        <div class="section-label">اختيار القناة</div>
+        <div class="pill-group">
+            <button class="pill-btn active" onclick="switchChannel('sxb', this)">S X B 🚀</button>
+            <button class="pill-btn" onclick="switchChannel('abuswe7l', this)">abuswe7l 🎮</button>
+        </div>
+
+        <div class="section-label">نوع المحتوى</div>
+        <div class="pill-group">
+            <button class="pill-btn active" onclick="switchMode('live', this)">🔴 بث مباشر</button>
+            <button class="pill-btn" onclick="switchMode('vod1', this)">⏪ آخر بث</button>
+            <button class="pill-btn" onclick="switchMode('vod2', this)">⏪ البث السابق</button>
+        </div>
+    </nav>
+
+    <script>
+        // تفعيل خواص تيليجرام WebApp وتوسيعه لملء الشاشة
+        if (window.Telegram && window.Telegram.WebApp) {
+            Telegram.WebApp.ready();
+            Telegram.WebApp.expand();
+        }
+
+        let currentChannel = 'sxb';
+        let currentMode = 'live';
+        let hlsInstance = null;
+
+        const video = document.getElementById('player');
+        const overlay = document.getElementById('playback-overlay');
+        const startBtn = document.getElementById('start-btn');
+        const loader = document.getElementById('loader');
+        const statusMsg = document.getElementById('status-msg');
+
+        function switchChannel(channel, element) {
+            currentChannel = channel;
+            document.querySelectorAll('.control-panel .pill-group:first-of-type .pill-btn').forEach(btn => btn.classList.remove('active'));
+            element.classList.add('active');
+            requestMediaStream();
+        }
+
+        function switchMode(mode, element) {
+            currentMode = mode;
+            document.querySelectorAll('.control-panel .pill-group:last-of-type .pill-btn').forEach(btn => btn.classList.remove('active'));
+            element.classList.add('active');
+            requestMediaStream();
+        }
+
+        async function requestMediaStream() {
+            if (hlsInstance) {
+                hlsInstance.destroy();
+                hlsInstance = null;
+            }
+            video.pause();
+            video.src = "";
+
+            overlay.style.display = "flex";
+            overlay.style.opacity = "1";
+            startBtn.style.display = "none";
+            loader.style.display = "block";
+            statusMsg.style.color = "var(--text-dim)";
+            statusMsg.innerText = "جاري جلب أحدث بيانات البث من خوادم Kick...";
+
+            try {
+                let streamUrl = "";
+                const targetEndpoint = currentMode === 'live' 
+                    ? `https://kick.com/api/v2/channels/${currentChannel}`
+                    : `https://kick.com/api/v2/channels/${currentChannel}/videos`;
+
+                const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetEndpoint)}`);
+                if (!res.ok) throw new Error("تعذر الوصول لشبكة البث");
+
+                const json = await res.json();
+                const payload = JSON.parse(json.contents);
+
+                if (currentMode === 'live') {
+                    if (payload.livestream && payload.livestream.is_live) {
+                        streamUrl = payload.playback_url;
+                    } else {
+                        throw new Error("القناة في وضع الأوفلاين (Offline) حالياً");
+                    }
+                } else {
+                    if (currentMode === 'vod1' && payload.length > 0) streamUrl = payload[0].source;
+                    else if (currentMode === 'vod2' && payload.length > 1) streamUrl = payload[1].source;
+                    else throw new Error("لم يتم العثور على تسجيل للبث المطلوب");
+                }
+
+                mountPlayer(streamUrl);
+
+            } catch (err) {
+                loader.style.display = "none";
+                statusMsg.style.color = "var(--danger-color)";
+                statusMsg.innerText = err.message || "حدث خطأ غير متوقع";
+                startBtn.style.display = "flex";
+                startBtn.innerHTML = "إعادة المحاولة 🔄";
+            }
+        }
+
+        function mountPlayer(streamUrl) {
+            statusMsg.innerText = "تم التقاط البث! تهيئة الدقة القصوى 1080p...";
+
+            const playMedia = () => {
+                overlay.style.opacity = "0";
+                setTimeout(() => { overlay.style.display = "none"; }, 300);
+                video.muted = false;
+                video.play();
+            };
+
+            if (Hls.isSupported()) {
+                hlsInstance = new Hls({
+                    maxBufferLength: 60,
+                    enableWorker: true,
+                    lowLatencyMode: true
+                });
+
+                hlsInstance.loadSource(streamUrl);
+                hlsInstance.attachMedia(video);
+
+                hlsInstance.on(Hls.Events.MANIFEST_PARSED, (e, data) => {
+                    // تثبيت أعلى دقة متوفرة تلقائياً
+                    if (data.levels && data.levels.length > 0) {
+                        hlsInstance.nextLevel = data.levels.length - 1;
+                    }
+                    playMedia();
+                });
+
+                hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+                    if (data.fatal) {
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                hlsInstance.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                hlsInstance.recoverMediaError();
+                                break;
+                            default:
+                                hlsInstance.destroy();
+                                break;
+                        }
+                    }
+                });
+
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = streamUrl;
+                video.addEventListener('loadedmetadata', playMedia);
+            }
+        }
+
+        startBtn.addEventListener('click', requestMediaStream);
+    </script>
+</body>
+</html>
         .brand span.ultra { color: #53fc18; font-style: italic; }
         
         .play-btn { 
