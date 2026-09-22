@@ -2,38 +2,159 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SXB Ultra</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SXB Ultra Player</title>
+    <!-- استدعاء أحدث إصدار من مكتبة HLS -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
-        body { margin: 0; background-color: #0f0f13; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; overflow: hidden; }
-        video { width: 100%; max-width: 100%; max-height: 80vh; background: #000; outline: none; }
-        h3 { color: #00ff88; margin-bottom: 15px; }
+        * { box-sizing: border-box; }
+        body { 
+            margin: 0; background-color: #0b0e14; color: white; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            overflow: hidden; height: 100vh; display: flex; 
+            align-items: center; justify-content: center; 
+        }
+        video { 
+            width: 100%; height: 100%; outline: none; 
+            background: #000; object-fit: contain; 
+        }
+        #overlay { 
+            position: absolute; inset: 0; 
+            background: linear-gradient(135deg, #0b0e14 0%, #1a1f2e 100%); 
+            display: flex; flex-direction: column; align-items: center; 
+            justify-content: center; z-index: 10; transition: opacity 0.5s ease;
+        }
+        .logo { font-size: 32px; font-weight: 900; letter-spacing: 2px; margin-bottom: 30px; text-shadow: 0 0 15px rgba(83, 252, 24, 0.5); }
+        .logo span { color: #53fc18; }
+        
+        .play-btn { 
+            background: #53fc18; color: #000; padding: 18px 40px; 
+            font-size: 18px; font-weight: bold; border-radius: 50px; 
+            border: none; cursor: pointer; box-shadow: 0 0 25px rgba(83, 252, 24, 0.4); 
+            transition: all 0.3s ease; display: flex; align-items: center; gap: 10px;
+        }
+        .play-btn:active { transform: scale(0.95); }
+        .play-btn:hover { box-shadow: 0 0 40px rgba(83, 252, 24, 0.7); }
+        
+        #status { margin-top: 25px; font-size: 16px; color: #a0a5b5; font-weight: 600; text-align: center; }
+        
+        /* تأثير التحميل الدائري */
+        .spinner { 
+            display: none; width: 40px; height: 40px; 
+            border: 4px solid rgba(83, 252, 24, 0.3); 
+            border-radius: 50%; border-top-color: #53fc18; 
+            animation: spin 1s ease-in-out infinite; margin-top: 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-    <h3 id="channel-name">جاري تحميل البث...</h3>
-    <video id="video" controls autoplay playsinline></video>
+
+    <!-- الواجهة التفاعلية قبل بدء البث -->
+    <div id="overlay">
+        <div class="logo">SXB <span>ULTRA</span></div>
+        <button class="play-btn" id="playBtn">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="black"><path d="M8 5v14l11-7z"/></svg>
+            بدء المشاهدة بأعلى جودة
+        </button>
+        <div class="spinner" id="spinner"></div>
+        <div id="status">جاهز للاتصال بالسيرفر</div>
+    </div>
+
+    <!-- مشغل الفيديو -->
+    <video id="video" playsinline controls></video>
 
     <script>
+        // قراءة اسم القناة ونوع البث من رابط البوت
         const urlParams = new URLSearchParams(window.location.search);
-        const streamUrl = urlParams.get('url') || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8'; 
-        const channelName = urlParams.get('ch') || 'SXB Ultra';
-
-        document.getElementById('channel-name').innerText = "بث: " + channelName;
+        const ch = urlParams.get('ch') || 'sxb';
+        const type = urlParams.get('type') || 'live';
+        
         const video = document.getElementById('video');
+        const overlay = document.getElementById('overlay');
+        const playBtn = document.getElementById('playBtn');
+        const statusText = document.getElementById('status');
+        const spinner = document.getElementById('spinner');
 
-        if (Hls.isSupported()) {
-            const hls = new Hls();
-            hls.loadSource(streamUrl);
-            hls.attachMedia(video);
-            hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                video.play();
-            });
-        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            video.src = streamUrl;
-            video.addEventListener('loadedmetadata', function() {
-                video.play();
+        playBtn.addEventListener('click', async () => {
+            // إخفاء الزر وإظهار مؤشر التحميل
+            playBtn.style.display = 'none';
+            spinner.style.display = 'block';
+            statusText.innerText = "جاري سحب بيانات البث من خوادم Kick...";
+            
+            let streamUrl = "";
+            try {
+                // الاتصال عبر خادم وكيل لتخطي الحماية
+                if (type === 'live') {
+                    const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent('https://kick.com/api/v2/channels/' + ch)}`);
+                    const data = await res.json();
+                    const kickData = JSON.parse(data.contents);
+                    
+                    if (kickData.livestream && kickData.livestream.is_live) {
+                        streamUrl = kickData.playback_url;
+                        statusText.innerText = "تم العثور على بث مباشر! جاري التهيئة...";
+                    } else {
+                        throw new Error("القناة لا تبث حالياً (Offline) 😴");
+                    }
+                } else {
+                    const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent('https://kick.com/api/v2/channels/' + ch + '/videos')}`);
+                    const data = await res.json();
+                    const videos = JSON.parse(data.contents);
+                    
+                    if (type === 'vod1' && videos.length > 0) streamUrl = videos[0].source;
+                    else if (type === 'vod2' && videos.length > 1) streamUrl = videos[1].source;
+                    else throw new Error("لا يوجد بث مسجل متاح ❌");
+                    
+                    statusText.innerText = "تم سحب البث المسجل! جاري التهيئة...";
+                }
+
+                // تشغيل الفيديو عبر Hls.js
+                if (Hls.isSupported()) {
+                    // إعدادات محسنة لتقليل التقطيع وتسريع البث الحي
+                    const hls = new Hls({
+                        maxBufferLength: 30,
+                        liveSyncDuration: 3
+                    });
+                    
+                    hls.loadSource(streamUrl);
+                    hls.attachMedia(video);
+                    
+                    hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                        // إجبار المشغل على اختيار أعلى جودة متاحة (1080p)
+                        hls.currentLevel = hls.levels.length - 1; 
+                        
+                        overlay.style.opacity = '0';
+                        setTimeout(() => overlay.style.display = 'none', 500);
+                        video.play();
+                    });
+                    
+                    hls.on(Hls.Events.ERROR, function (event, data) {
+                        if (data.fatal) {
+                            throw new Error("حدث خطأ في تشغيل مسار الفيديو ⚠️");
+                        }
+                    });
+
+                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                    // دعم هواتف الآيفون (iOS)
+                    video.src = streamUrl;
+                    video.addEventListener('loadedmetadata', () => {
+                        overlay.style.opacity = '0';
+                        setTimeout(() => overlay.style.display = 'none', 500);
+                        video.play();
+                    });
+                }
+            } catch (error) {
+                // معالجة الأخطاء وإظهارها للمستخدم
+                spinner.style.display = 'none';
+                statusText.style.color = '#ff4444';
+                statusText.innerText = error.message || "❌ فشل الاتصال بخوادم Kick";
+                playBtn.style.display = 'flex';
+                playBtn.innerHTML = "إعادة المحاولة 🔄";
+            }
+        });
+    </script>
+</body>
+</html>
             });
         }
     </script>
